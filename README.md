@@ -4,11 +4,13 @@ Interface responsive pour les enseignants et élèves, préparée pour GitHub Pa
 
 ## État
 
-L’interface est publiée sur https://arduino15650.github.io/gestion-pfmp/ et donne accès au site actuel pendant la migration. La migration PostgreSQL passe les tests isolés. La création du projet dans l’organisation Supabase **GestPFMP** (anciennement Houria) nécessite encore que le connecteur soit autorisé pour cette organisation. Aucune base existante n’a été modifiée.
+L’interface est publiée sur https://arduino15650.github.io/gestion-pfmp/. Le backend Supabase dédié est installé, avec 3 042 entreprises et 45 élèves transférés depuis la sauvegarde privée du 7 octobre 2026. La fonction `pfmp-api` vérifie les sessions et les rôles, impose Authenticator aux enseignants et réserve l’inscription élève aux codes personnels. Le site d’origine est conservé.
+
+Les essais réels ont vérifié le refus des accès anonymes, l’isolation des élèves, les codes à usage unique, Authenticator, les comptes rendus, la réservation exclusive et la libération d’une entreprise. La première activation du compte enseignant nécessite sa confirmation e-mail ; les URL de retour Supabase doivent pointer vers cette adresse GitHub Pages.
 
 ## Déploiement
 
-1. Créer un **nouveau** projet Gestion PFMP dans GestPFMP. Vérifier l’identifiant et que la base est vide avant d’appliquer `supabase/schema.sql`.
+1. Pour une nouvelle installation, utiliser un projet dédié. Vérifier l’identifiant et que la base est vide avant d’appliquer `supabase/schema.sql`. Ne pas rejouer ce fichier sur l’installation existante.
 2. Déployer `supabase/functions/pfmp-api`. La fonction vérifie chaque session Supabase et réserve la création d’un compte élève à un code à usage unique. Sa clé de service reste exclusivement dans l’environnement serveur Supabase.
 3. Initialiser les adresses enseignants autorisées dans `pfmp_teachers`, puis importer les entreprises, élèves, comptes rendus et réservations depuis une sauvegarde récente du site existant. Ne pas publier cette sauvegarde ni les fichiers Excel dans GitHub.
 4. Configurer Supabase Auth : URL du site et redirections GitHub autorisées, confirmation des e-mails enseignants activée, TOTP activé, mots de passe de 12 caractères minimum, protection contre les mots de passe compromis si disponible. Ne pas désactiver la confirmation e-mail. Pour les élèves, la fonction valide l’invitation personnelle avant de créer leur compte.
