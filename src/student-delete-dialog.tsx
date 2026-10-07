@@ -5,7 +5,7 @@ export default function StudentDeleteDialog({students,busy,onClose,onDelete}:{st
  const dialog=useRef<HTMLDialogElement>(null),[confirmation,setConfirmation]=useState(''),[error,setError]=useState('');
  useEffect(()=>{const previous=document.activeElement as HTMLElement|null;dialog.current?.showModal();return()=>{dialog.current?.close();previous?.focus();};},[]);
  return <dialog ref={dialog} className="student-delete-dialog" aria-labelledby="student-delete-title" onCancel={e=>{e.preventDefault();if(!busy)onClose();}}>
-  <form onSubmit={async e=>{e.preventDefault();if(busy||confirmation.trim()!=='SUPPRIMER')return;setError('');if(await onDelete(students,confirmation.trim()))onClose();else setError('La suppression n’a pas été effectuée. Vérifiez le message d’erreur et réessayez.');}}>
+  <form onSubmit={async e=>{e.preventDefault();if(busy||confirmation.trim()!=='SUPPRIMER')return;setError('');if(await onDelete(students,confirmation.trim()))onClose();else setError('La suppression n’a pas pu être confirmée. Fermez cette fenêtre et actualisez la liste avant de réessayer.');}}>
    <h2 id="student-delete-title">Supprimer définitivement {students.length===1?'cet élève':`ces ${students.length} élèves`} ?</h2>
    <p>Leurs fiches, comptes de connexion, codes d’accès et comptes rendus seront supprimés. Leurs entreprises seront conservées et leurs réservations PFMP libérées.</p>
    <ul className="student-delete-list">{students.map(s=><li key={s.id}><strong>{s.name}</strong><span>{s.class_name}</span></li>)}</ul>
