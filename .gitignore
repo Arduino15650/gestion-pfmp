@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env*
+!.env.example
+*.tsbuildinfo
+.supabase/
+*.private.json
+*.private.sql

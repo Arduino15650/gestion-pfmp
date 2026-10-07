@@ -1,0 +1,3 @@
+[functions.pfmp-api]
+# Invitation-based signup is public; the function verifies Supabase Auth for every protected action.
+verify_jwt = false
