@@ -4,11 +4,11 @@ Interface responsive pour les enseignants et élèves, préparée pour GitHub Pa
 
 ## État
 
-La version locale compile et la migration PostgreSQL passe les tests isolés. La création du projet dans l’organisation Supabase **Houria** nécessite encore que le connecteur soit autorisé pour cette organisation. Aucune base existante n’a été modifiée.
+L’interface est publiée sur https://arduino15650.github.io/gestion-pfmp/ et donne accès au site actuel pendant la migration. La migration PostgreSQL passe les tests isolés. La création du projet dans l’organisation Supabase **GestPFMP** (anciennement Houria) nécessite encore que le connecteur soit autorisé pour cette organisation. Aucune base existante n’a été modifiée.
 
 ## Déploiement
 
-1. Créer un **nouveau** projet Gestion PFMP dans Houria. Vérifier l’identifiant et que la base est vide avant d’appliquer `supabase/schema.sql`.
+1. Créer un **nouveau** projet Gestion PFMP dans GestPFMP. Vérifier l’identifiant et que la base est vide avant d’appliquer `supabase/schema.sql`.
 2. Déployer `supabase/functions/pfmp-api`. La fonction vérifie chaque session Supabase et réserve la création d’un compte élève à un code à usage unique. Sa clé de service reste exclusivement dans l’environnement serveur Supabase.
 3. Initialiser les adresses enseignants autorisées dans `pfmp_teachers`, puis importer les entreprises, élèves, comptes rendus et réservations depuis une sauvegarde récente du site existant. Ne pas publier cette sauvegarde ni les fichiers Excel dans GitHub.
 4. Configurer Supabase Auth : URL du site et redirections GitHub autorisées, confirmation des e-mails enseignants activée, TOTP activé, mots de passe de 12 caractères minimum, protection contre les mots de passe compromis si disponible. Ne pas désactiver la confirmation e-mail. Pour les élèves, la fonction valide l’invitation personnelle avant de créer leur compte.
