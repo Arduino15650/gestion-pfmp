@@ -21,7 +21,7 @@ Le catalogue et les listes d’élèves sont masqués par défaut. Les données 
 
 ## Suppression des élèves
 
-Dans l’espace enseignant, choisir une classe puis un élève, une sélection ou tous les élèves de la classe. Le bouton de suppression concerne uniquement les noms affichés dans la confirmation. Saisir `SUPPRIMER` pour valider. Les fiches, invitations, comptes de connexion, sessions et comptes rendus sont supprimés dans une transaction. Les entreprises sont conservées et les réservations libérées. Les comptes enseignants sont protégés. En cas d’échec, la transaction est annulée. L’opération n’offre pas de restauration depuis l’application.
+Dans l’espace enseignant, choisir une classe puis un élève, une sélection ou tous les élèves de la classe. Le bouton de suppression concerne uniquement les noms affichés dans la confirmation. Saisir `SUPPRIMER` pour valider. Les fiches, invitations et comptes rendus sont supprimés dans une transaction ; les entreprises sont conservées et les réservations libérées. L’accès aux données est immédiatement révoqué. Les comptes et sessions sont ensuite supprimés par l’API Supabase Auth. Si cette API est indisponible, une file privée conserve uniquement leurs identifiants et un bouton permet de finaliser la suppression. Les comptes enseignants sont protégés. L’opération n’offre pas de restauration depuis l’application.
 
 ## Migration des comptes
 

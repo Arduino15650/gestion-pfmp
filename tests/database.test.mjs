@@ -105,7 +105,15 @@ test('permanent deletion clears accounts, sessions, invitations, reports and res
  await assert.rejects(deletePupils({ids:['delete-b'],confirm:'SUPPRIMER'},Y,'aal1'),/réservée/);
  const before=(await rpc('state')).revision;
  const result=await deletePupils({ids:['delete-a','delete-b','delete-a','already-gone'],confirm:'SUPPRIMER'});
- assert.deepEqual(result,{deleted:2,reportsDeleted:1,reservationsReleased:1,accountsDeleted:4});
+ assert.deepEqual(result,{deleted:2,reportsDeleted:1,reservationsReleased:1,accountsQueued:4});
+ assert.equal((await db.query('select count(*)::int n from public.pfmp_account_deletions')).rows[0].n,4);
+ await assert.rejects(rpc('state',{},Y),/pas autorisé/);
+ // The Auth Admin API performs account deletion; a failed API call keeps its queue entry.
+ const cleanup=async(action,ids=[])=>(await db.query('select public.pfmp_cleanup_student_accounts($1,$2::uuid[],$3,$4,$5,$6) result',[action,ids,T,emails[T],sessions[T],'aal2'])).rows[0].result;
+ assert.equal((await cleanup('complete',[Y])).pendingAccounts,4);
+ await db.query('delete from auth.sessions where user_id=any($1::uuid[])',[[Y,Z,P,O]]);
+ await db.query('delete from auth.users where id=any($1::uuid[])',[[Y,Z,P,O]]);
+ assert.equal((await cleanup('complete',[Y,Z,P,O])).pendingAccounts,0);
  assert.equal((await db.query('select count(*)::int n from auth.users where id=any($1::uuid[])',[[Y,Z,P,O]])).rows[0].n,0);
  assert.equal((await db.query('select count(*)::int n from auth.sessions where user_id=any($1::uuid[])',[[Y,Z,P,O]])).rows[0].n,0);
  assert.equal((await db.query("select count(*)::int n from public.pfmp_invites where student_id='delete-b'")).rows[0].n,0);
@@ -120,11 +128,12 @@ test('mixed selection containing a teacher is rejected without deleting any pupi
  assert.equal((await db.query("select count(*)::int n from public.pfmp_students where id in ('benoit','protected-teacher')")).rows[0].n,2);
  assert.equal((await db.query('select count(*)::int n from auth.users where id=$1',[T])).rows[0].n,1);
 });
-test('a failure during account deletion rolls back the entire pupil deletion',async()=>{
- await db.exec("create function auth.block_test_delete() returns trigger language plpgsql as $$ begin raise exception 'simulated account deletion failure'; end $$;create trigger block_test_delete before delete on auth.users for each row execute function auth.block_test_delete();");
+test('a database failure rolls back pupil data deletion and the account removal queue',async()=>{
+ await db.exec("create function public.block_test_delete() returns trigger language plpgsql as $$ begin raise exception 'simulated pupil deletion failure'; end $$;create trigger block_test_delete before delete on public.pfmp_students for each row execute function public.block_test_delete();");
  try{
-  await assert.rejects(deletePupils({ids:['benoit'],confirm:'SUPPRIMER'}),/simulated account deletion failure/);
+  await assert.rejects(deletePupils({ids:['benoit'],confirm:'SUPPRIMER'}),/simulated pupil deletion failure/);
   assert.equal((await db.query("select count(*)::int n from public.pfmp_students where id='benoit'")).rows[0].n,1);
   assert.equal((await db.query('select count(*)::int n from auth.users where id=$1',[B])).rows[0].n,1);
- }finally{await db.exec('drop trigger block_test_delete on auth.users;drop function auth.block_test_delete();');}
+  assert.equal((await db.query('select count(*)::int n from public.pfmp_account_deletions')).rows[0].n,0);
+ }finally{await db.exec('drop trigger block_test_delete on public.pfmp_students;drop function public.block_test_delete();');}
 });

@@ -52,8 +52,14 @@ Deno.serve(async(req:Request)=>{
   const jwt=claims(token);if(jwt.sub!==user.id||!jwt.session_id)throw new HttpError('Session non valide.',401);
   const ctx={p_user:user.id,p_email:user.email.toLowerCase(),p_session:jwt.session_id,p_aal:jwt.aal||'aal1'};
   const rpc=async(name:string,data:any={})=>check(await db.rpc('pfmp_request',{...ctx,p_action:name,p_body:data}));
+  const cleanupStatus=async(action:string,ids:string[]=[])=>check(await db.rpc('pfmp_cleanup_student_accounts',{...ctx,p_action:action,p_ids:ids}));
+  const cleanupAccounts=async()=>{
+   const queue=await cleanupStatus('list'),completed:string[]=[];
+   for(let i=0;i<queue.userIds.length;i+=5){await Promise.all(queue.userIds.slice(i,i+5).map(async(id:string)=>{try{const {error}=await db.auth.admin.deleteUser(id);if(!error||error.status===404)completed.push(id);}catch{/* Keep identifiers queued for a later retry. */}}));}
+   const remaining=await cleanupStatus('complete',completed);return {accountsDeleted:completed.length,pendingAccounts:remaining.pendingAccounts};
+  };
   if(action==='profile'&&req.method==='GET')return respond(await rpc('profile'));
-  if(action==='state'&&req.method==='GET')return respond(await rpc('state',{revision:target.searchParams.get('revision')}));
+  if(action==='state'&&req.method==='GET'){const state=await rpc('state',{revision:target.searchParams.get('revision')});if(state.teacher&&!state.unchanged)state.pendingAccountDeletions=(await cleanupStatus('status')).pendingAccounts;return respond(state);}
   if(req.method!=='POST')throw new HttpError('Route inconnue.',404);
   // Reject unauthorized roles before normalizing a batch or calling third-party geocoding.
   const profile=await rpc('profile');
@@ -62,8 +68,10 @@ Deno.serve(async(req:Request)=>{
   if(action==='delete-students'){
    const result=await db.rpc('pfmp_delete_students',{...ctx,p_body:body});
    if(result.error?.code==='23503')throw new HttpError('Suppression impossible : des données sont encore liées à cet élève. Aucun élève n’a été supprimé.',409);
-   return respond(check(result));
+   const deleted=check(result);
+   try{return respond({...deleted,...await cleanupAccounts()});}catch{return respond({...deleted,pendingAccounts:deleted.accountsQueued,cleanupPending:true});}
   }
+  if(action==='cleanup-student-accounts')return respond(await cleanupAccounts());
   if(action==='companies'){
    const input=Array.isArray(body.companies)?body.companies:[body];if(input.length>500)throw new HttpError('Importez au maximum 500 entreprises à la fois.');
    const companies=await Promise.all(input.map(async(v:any)=>{const c=normalizeCompany(v,clean(v.id)||crypto.randomUUID());return {...c,fingerprint:await fingerprint(c)};}));
