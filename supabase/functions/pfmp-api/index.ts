@@ -59,6 +59,11 @@ Deno.serve(async(req:Request)=>{
   const profile=await rpc('profile');
   if(profile.role==='teacher'&&jwt.aal!=='aal2')throw new HttpError('Validez Authenticator.',403);
   if(action!=='reports'&&profile.role!=='teacher')throw new HttpError('Action réservée à l’enseignant.',403);
+  if(action==='delete-students'){
+   const result=await db.rpc('pfmp_delete_students',{...ctx,p_body:body});
+   if(result.error?.code==='23503')throw new HttpError('Suppression impossible : des données sont encore liées à cet élève. Aucun élève n’a été supprimé.',409);
+   return respond(check(result));
+  }
   if(action==='companies'){
    const input=Array.isArray(body.companies)?body.companies:[body];if(input.length>500)throw new HttpError('Importez au maximum 500 entreprises à la fois.');
    const companies=await Promise.all(input.map(async(v:any)=>{const c=normalizeCompany(v,clean(v.id)||crypto.randomUUID());return {...c,fingerprint:await fingerprint(c)};}));

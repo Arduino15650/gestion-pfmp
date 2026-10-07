@@ -15,6 +15,7 @@ const company=(id,n='Entreprise '+id)=>({id,raisonSociale:n,denomination:'',sire
 before(async()=>{
  await db.exec('create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create table auth.users(id uuid primary key,email text,email_confirmed_at timestamptz);create table auth.sessions(id uuid primary key,user_id uuid);');
  await db.exec(readFileSync(new URL('../supabase/schema.sql',import.meta.url),'utf8'));
+ await db.exec(readFileSync(new URL('../supabase/delete-students.sql',import.meta.url),'utf8'));
  for(const id of [T,A,B,X]){await db.query('insert into auth.users values($1,$2,now())',[id,emails[id]]);await db.query('insert into auth.sessions values($1,$2)',[sessions[id],id]);}
  await db.query('insert into public.pfmp_teachers(email) values($1)',[emails[T]]);
  await db.query("insert into public.pfmp_students(id,name,class_name,email,auth_user_id) values('alice','Alice Exemple','1MELEC',$1,$2),('benoit','Benoît Exemple','TMELEC',$3,$4)",[emails[A],A,emails[B],B]);
@@ -77,4 +78,53 @@ test('invitation claims are single-use, invalid attempts are rate limited, reset
 });
 test('revoked Auth session is refused even with a formerly valid user',async()=>{
  await db.query('delete from auth.sessions where id=$1',[sessions[B]]);await assert.rejects(rpc('state',{},B),/Session expirée/);
+});
+
+async function deletePupils(body,user=T,aal='aal2'){
+ await db.exec('set role service_role');try{
+  return (await db.query('select public.pfmp_delete_students($1::jsonb,$2::uuid,$3,$4::uuid,$5) result',[JSON.stringify(body),user,emails[user],sessions[user],aal])).rows[0].result;
+ }finally{await db.exec('reset role');}
+}
+test('student deletion requires a teacher, MFA, an explicit selection and exact confirmation',async()=>{
+ await assert.rejects(deletePupils({ids:['benoit'],confirm:'SUPPRIMER'},T,'aal1'),/Authenticator/);
+ await assert.rejects(deletePupils({ids:['benoit']}),/SUPPRIMER/);
+ for(const ids of [undefined,[],{},[''],[null],[1],Array(1001).fill('benoit')])await assert.rejects(deletePupils({ids,confirm:'SUPPRIMER'}));
+ for(const role of ['anon','authenticated']){
+  await db.exec('set role '+role);try{await assert.rejects(db.query("select public.pfmp_delete_students('{}',null,null,null,null)"),/permission denied/);}finally{await db.exec('reset role');}
+ }
+ assert.equal((await db.query("select count(*)::int n from public.pfmp_students where id='benoit'")).rows[0].n,1);
+});
+test('permanent deletion clears accounts, sessions, invitations, reports and reservations but retains companies and other pupils',async()=>{
+ const Y='30000000-0000-4000-8000-000000000001',Z='30000000-0000-4000-8000-000000000002',P='30000000-0000-4000-8000-000000000003',O='30000000-0000-4000-8000-000000000004';
+ for(const [index,id] of [Y,Z,P,O].entries()){emails[id]='delete-'+index+'@example.test';sessions[id]='40000000-0000-4000-8000-00000000000'+(index+1);await db.query('insert into auth.users values($1,$2,now())',[id,emails[id]]);await db.query('insert into auth.sessions values($1,$2)',[sessions[id],id]);}
+ await db.query("insert into public.pfmp_students(id,name,class_name,email,auth_user_id) values('delete-a','À supprimer A','TEST',$1,$2),('delete-b','À supprimer B','TEST',$3,$4)",[emails[Y],Y,emails[Z],Z]);
+ await rpc('companies',{companies:[company('retained-company')]});
+ await rpc('reports',{companyId:'retained-company',studentId:'delete-a',status:'Accepté',date:'2026-10-07'},Y);
+ await db.query("insert into public.pfmp_invites(student_id,email,code_hash,expires_at,pending_user_id,previous_user_id) values('delete-b',$1,'hash',now()+interval '1 day',$2,$3)",[emails[Z],P,O]);
+ await db.query('insert into public.pfmp_signup_attempts(email,failures) values($1,3)',[emails[Z]]);
+ await assert.rejects(deletePupils({ids:['delete-b'],confirm:'SUPPRIMER'},Y,'aal1'),/réservée/);
+ const before=(await rpc('state')).revision;
+ const result=await deletePupils({ids:['delete-a','delete-b','delete-a','already-gone'],confirm:'SUPPRIMER'});
+ assert.deepEqual(result,{deleted:2,reportsDeleted:1,reservationsReleased:1,accountsDeleted:4});
+ assert.equal((await db.query('select count(*)::int n from auth.users where id=any($1::uuid[])',[[Y,Z,P,O]])).rows[0].n,0);
+ assert.equal((await db.query('select count(*)::int n from auth.sessions where user_id=any($1::uuid[])',[[Y,Z,P,O]])).rows[0].n,0);
+ assert.equal((await db.query("select count(*)::int n from public.pfmp_invites where student_id='delete-b'")).rows[0].n,0);
+ assert.equal((await db.query('select count(*)::int n from public.pfmp_signup_attempts where email=$1',[emails[Z]])).rows[0].n,0);
+ const state=await rpc('state');assert.ok(state.revision>before);assert.equal(state.companies.find(c=>c.id==='retained-company').reserved,false);assert.ok(state.students.some(s=>s.id==='benoit'));
+ await assert.rejects(rpc('state',{},Y),/Session expirée/);
+ assert.equal((await deletePupils({ids:['delete-a','delete-b'],confirm:'SUPPRIMER'})).deleted,0);
+});
+test('mixed selection containing a teacher is rejected without deleting any pupils',async()=>{
+ await db.query("insert into public.pfmp_students(id,name,class_name,email,auth_user_id) values('protected-teacher','Professeur','TEST',$1,$2)",[emails[T],T]);
+ await assert.rejects(deletePupils({ids:['benoit','protected-teacher'],confirm:'SUPPRIMER'}),/enseignant ne peut pas/);
+ assert.equal((await db.query("select count(*)::int n from public.pfmp_students where id in ('benoit','protected-teacher')")).rows[0].n,2);
+ assert.equal((await db.query('select count(*)::int n from auth.users where id=$1',[T])).rows[0].n,1);
+});
+test('a failure during account deletion rolls back the entire pupil deletion',async()=>{
+ await db.exec("create function auth.block_test_delete() returns trigger language plpgsql as $$ begin raise exception 'simulated account deletion failure'; end $$;create trigger block_test_delete before delete on auth.users for each row execute function auth.block_test_delete();");
+ try{
+  await assert.rejects(deletePupils({ids:['benoit'],confirm:'SUPPRIMER'}),/simulated account deletion failure/);
+  assert.equal((await db.query("select count(*)::int n from public.pfmp_students where id='benoit'")).rows[0].n,1);
+  assert.equal((await db.query('select count(*)::int n from auth.users where id=$1',[B])).rows[0].n,1);
+ }finally{await db.exec('drop trigger block_test_delete on auth.users;drop function auth.block_test_delete();');}
 });

@@ -10,7 +10,7 @@ Les essais réels ont vérifié le refus des accès anonymes, l’isolation des 
 
 ## Déploiement
 
-1. Pour une nouvelle installation, utiliser un projet dédié. Vérifier l’identifiant et que la base est vide avant d’appliquer `supabase/schema.sql`. Ne pas rejouer ce fichier sur l’installation existante.
+1. Pour une nouvelle installation, utiliser un projet dédié. Vérifier l’identifiant et que la base est vide avant d’appliquer `supabase/schema.sql`, puis `supabase/delete-students.sql`. Ne pas rejouer le schéma initial sur l’installation existante.
 2. Déployer `supabase/functions/pfmp-api`. La fonction vérifie chaque session Supabase et réserve la création d’un compte élève à un code à usage unique. Sa clé de service reste exclusivement dans l’environnement serveur Supabase.
 3. Initialiser les adresses enseignants autorisées dans `pfmp_teachers`, puis importer les entreprises, élèves, comptes rendus et réservations depuis une sauvegarde récente du site existant. Ne pas publier cette sauvegarde ni les fichiers Excel dans GitHub.
 4. Configurer Supabase Auth : URL du site et redirections GitHub autorisées, confirmation des e-mails enseignants activée, TOTP activé, mots de passe de 12 caractères minimum, protection contre les mots de passe compromis si disponible. Ne pas désactiver la confirmation e-mail. Pour les élèves, la fonction valide l’invitation personnelle avant de créer leur compte.
@@ -18,6 +18,10 @@ Les essais réels ont vérifié le refus des accès anonymes, l’isolation des 
 6. Exécuter `npm ci`, `npm test`, `npm run build`, puis publier `dist` sur GitHub Pages. Le chemin de sous-dossier GitHub est pris en charge.
 
 Le catalogue et les listes d’élèves sont masqués par défaut. Les données ne sont téléchargées qu’après connexion. Les rafraîchissements utilisent un numéro de révision pour éviter de retransmettre les 3 042 entreprises à chaque intervalle.
+
+## Suppression des élèves
+
+Dans l’espace enseignant, choisir une classe puis un élève, une sélection ou tous les élèves de la classe. Le bouton de suppression concerne uniquement les noms affichés dans la confirmation. Saisir `SUPPRIMER` pour valider. Les fiches, invitations, comptes de connexion, sessions et comptes rendus sont supprimés dans une transaction. Les entreprises sont conservées et les réservations libérées. Les comptes enseignants sont protégés. En cas d’échec, la transaction est annulée. L’opération n’offre pas de restauration depuis l’application.
 
 ## Migration des comptes
 
